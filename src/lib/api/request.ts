@@ -7,6 +7,7 @@ import {
 
 export interface ApiRequestOptions {
   signal?: AbortSignal;
+  cache?: RequestCache;
 }
 
 interface JsonRequestOptions extends ApiRequestOptions {
@@ -27,6 +28,7 @@ export async function requestJson<T>(
     method: options.method ?? "GET",
     headers,
     signal: options.signal,
+    cache: options.cache,
   };
 
   if (options.body !== undefined) {
