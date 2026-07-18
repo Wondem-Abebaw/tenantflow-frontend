@@ -194,6 +194,7 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
                   type="text"
                   autoComplete="name"
                   required
+                  disabled={isPending}
                   aria-invalid={Boolean(fieldErrors.name)}
                   aria-describedby="name-error"
                 />
@@ -215,6 +216,7 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
                   inputMode="email"
                   autoComplete="email"
                   required
+                  disabled={isPending}
                   aria-invalid={Boolean(fieldErrors.email)}
                   aria-describedby="email-error"
                 />
@@ -236,6 +238,7 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
                   inputMode="tel"
                   autoComplete="tel"
                   required
+                  disabled={isPending}
                   aria-invalid={Boolean(fieldErrors.phone)}
                   aria-describedby="phone-error"
                 />
@@ -257,6 +260,7 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
                   name="message"
                   rows={5}
                   required
+                  disabled={isPending}
                   spellCheck
                   aria-invalid={Boolean(fieldErrors.message)}
                   aria-describedby="message-error"
@@ -285,7 +289,7 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
                 inquiry.
               </p>
               <button
-                className="inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-[6px] bg-[#174c3b] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#10382b] focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[#d97a54] disabled:cursor-not-allowed disabled:bg-[#9ba6a0] sm:w-auto sm:min-w-40"
+                className="inline-flex min-h-12 w-full max-w-full items-center justify-center gap-3 rounded-[6px] break-words bg-[#174c3b] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#10382b] focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[#d97a54] disabled:cursor-not-allowed disabled:bg-[#9ba6a0] sm:w-auto sm:min-w-40"
                 type="submit"
                 disabled={isPending || !hasValidProperty}
               >
@@ -373,7 +377,7 @@ function isInquiryField(value: string): value is InquiryField {
 }
 
 function fieldClassName(hasError: boolean): string {
-  return `mt-2 min-h-12 w-full rounded-[6px] border bg-white px-3.5 py-2.5 text-base text-[#18201d] outline-none transition-colors placeholder:text-[#89938e] focus:border-[#2f765e] focus:ring-3 focus:ring-[#d9e9df] ${
+  return `mt-2 min-h-12 w-full rounded-[6px] border bg-white px-3.5 py-2.5 text-base text-[#18201d] outline-none transition-colors placeholder:text-[#89938e] focus:border-[#2f765e] focus:ring-3 focus:ring-[#d9e9df] disabled:cursor-not-allowed disabled:bg-[#eef0ed] disabled:text-[#68756f] ${
     hasError ? "border-[#b34f32]" : "border-[#aeb8b2]"
   }`;
 }

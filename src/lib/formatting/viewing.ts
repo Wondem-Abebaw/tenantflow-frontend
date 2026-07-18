@@ -1,5 +1,7 @@
 import type { AvailabilitySlotResponse } from "@/lib/api/types";
 
+const VIEWING_LOCALE = "en-US";
+
 export interface ViewingSlotOption {
   slot: AvailabilitySlotResponse;
   timeLabel: string;
@@ -27,13 +29,13 @@ export function groupViewingSlots(
       month: "2-digit",
       day: "2-digit",
     });
-    const dateLabelFormatter = new Intl.DateTimeFormat(undefined, {
+    const dateLabelFormatter = new Intl.DateTimeFormat(VIEWING_LOCALE, {
       timeZone,
       weekday: "long",
       month: "long",
       day: "numeric",
     });
-    const timeFormatter = new Intl.DateTimeFormat(undefined, {
+    const timeFormatter = new Intl.DateTimeFormat(VIEWING_LOCALE, {
       timeZone,
       hour: "numeric",
       minute: "2-digit",
@@ -85,14 +87,14 @@ export function formatViewingDateTime(
       return null;
     }
 
-    const dateFormatter = new Intl.DateTimeFormat(undefined, {
+    const dateFormatter = new Intl.DateTimeFormat(VIEWING_LOCALE, {
       timeZone,
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
     });
-    const timeFormatter = new Intl.DateTimeFormat(undefined, {
+    const timeFormatter = new Intl.DateTimeFormat(VIEWING_LOCALE, {
       timeZone,
       hour: "numeric",
       minute: "2-digit",

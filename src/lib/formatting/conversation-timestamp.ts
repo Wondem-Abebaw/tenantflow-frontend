@@ -1,14 +1,5 @@
-const conversationTimestampFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
+import { formatDateTime } from "./date";
 
 export function formatConversationTimestamp(timestamp: string): string {
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Time unavailable";
-  }
-
-  return conversationTimestampFormatter.format(date);
+  return formatDateTime(timestamp);
 }

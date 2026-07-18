@@ -5,6 +5,7 @@ import type {
   PropertyResponse,
   QualificationDecisionResponse,
 } from "@/lib/api/types";
+import { formatDateOnly } from "@/lib/formatting/date";
 import {
   formatBedrooms,
   formatMonthlyRent,
@@ -24,6 +25,10 @@ export function QualificationOutcome({
 }: QualificationOutcomeProps) {
   if (status === "PRE_QUALIFIED") {
     return <PreQualifiedOutcome leadId={leadId} />;
+  }
+
+  if (status === "SCHEDULED") {
+    return <ScheduledOutcome leadId={leadId} />;
   }
 
   if (status !== "REJECTED") {
@@ -126,6 +131,32 @@ function PreQualifiedOutcome({ leadId }: { leadId: string }) {
   );
 }
 
+function ScheduledOutcome({ leadId }: { leadId: string }) {
+  return (
+    <section
+      aria-labelledby="qualification-outcome-title"
+      className="border-t-4 border-[#58798b] bg-[#eef4f7] px-5 py-6 sm:px-7 sm:py-7"
+    >
+      <p className="text-xs font-semibold text-[#344f60]">Viewing scheduled</p>
+      <h2
+        className="mt-2 text-xl font-semibold leading-7 break-words text-[#233f50]"
+        id="qualification-outcome-title"
+      >
+        Your appointment is confirmed
+      </h2>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-[#526976]">
+        Booking is complete, and additional scheduling attempts are disabled.
+      </p>
+      <Link
+        className="mt-6 inline-flex min-h-12 w-full max-w-full items-center justify-center rounded-[6px] bg-[#344f60] px-6 py-3 text-center text-sm font-semibold break-words text-white transition-colors hover:bg-[#293f4d] focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[#d97a54] sm:w-auto"
+        href={`/leads/${encodeURIComponent(leadId)}/booking`}
+      >
+        View booking confirmation
+      </Link>
+    </section>
+  );
+}
+
 function AlternativePropertyCard({
   property,
 }: {
@@ -144,6 +175,11 @@ function AlternativePropertyCard({
         <PropertyDetail
           label="Bedrooms"
           value={formatBedrooms(property.bedrooms)}
+        />
+        <PropertyDetail
+          className="col-span-2"
+          label="Available"
+          value={formatDateOnly(property.availableFrom)}
         />
         <PropertyDetail
           className="col-span-2"

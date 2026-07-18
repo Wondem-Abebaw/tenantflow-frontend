@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { LeadStatusBadge } from "@/components/ui/lead-status-badge";
 import { ApiError, getApiErrorMessage } from "@/lib/api/errors";
 import { getLeadState } from "@/lib/api/leads";
 import type {
@@ -176,9 +177,7 @@ export function ViewingBooking({
             <p className="text-sm font-semibold text-[#174c3b]">TenantFlow</p>
             <p className="truncate text-xs text-[#68756f]">Viewing booking</p>
           </div>
-          <span className="max-w-44 shrink-0 rounded-[6px] border border-[#6b9d87] bg-[#e8f3ed] px-3 py-1.5 text-center text-xs font-semibold leading-4 text-[#174c3b]">
-            {formatLeadStatus(leadStatus)}
-          </span>
+          <LeadStatusBadge status={leadStatus} />
         </div>
       </header>
 
@@ -266,7 +265,7 @@ function AvailabilitySelection({
   return (
     <>
       <p className="text-sm font-semibold text-[#b34f32]">Schedule a viewing</p>
-      <h2 className="mt-3 text-3xl font-semibold leading-tight text-[#102e25] sm:text-4xl">
+      <h2 className="mt-3 text-3xl font-semibold leading-tight break-words text-[#102e25] sm:text-4xl">
         Choose an available time
       </h2>
 
@@ -320,7 +319,7 @@ function AvailabilitySelection({
                             name="viewing-slot"
                             value={slotKey(slot)}
                             checked={selected}
-                            disabled={isScheduling}
+                            disabled={isScheduling || isLoading}
                             onChange={() => {
                               onSelectSlot(slot);
                             }}
@@ -411,7 +410,7 @@ function AvailabilityError({
         {message}
       </p>
       <button
-        className="mt-3 min-h-10 text-sm font-semibold text-[#7d301f] underline decoration-2 underline-offset-4 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[#d97a54]"
+        className="mt-3 min-h-10 max-w-full text-sm font-semibold break-words disabled:cursor-not-allowed disabled:opacity-60 text-[#7d301f] underline decoration-2 underline-offset-4 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[#d97a54]"
         type="button"
         disabled={disabled}
         onClick={onRefresh}
@@ -438,7 +437,7 @@ function AvailabilityEmpty({
         Availability can change, so you can check again.
       </p>
       <button
-        className="mt-3 min-h-10 text-sm font-semibold text-[#315e4e] underline decoration-2 underline-offset-4 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[#d97a54]"
+        className="mt-3 min-h-10 max-w-full text-sm font-semibold break-words disabled:cursor-not-allowed disabled:opacity-60 text-[#315e4e] underline decoration-2 underline-offset-4 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[#d97a54]"
         type="button"
         disabled={disabled}
         onClick={onRefresh}
