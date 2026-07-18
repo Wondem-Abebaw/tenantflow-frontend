@@ -11,13 +11,16 @@ import {
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { addLeadMessage, getLeadState } from "@/lib/api/leads";
 import type {
+  AddLeadMessageResponse,
   ConversationMessageResponse,
   LeadStatus,
 } from "@/lib/api/types";
 import { formatConversationTimestamp } from "@/lib/formatting/conversation-timestamp";
 import { formatLeadStatus } from "@/lib/formatting/lead-status";
 
+import { QualificationOutcome } from "../qualification/qualification-outcome";
 import {
+  applyMessageResponse,
   type ScreeningChatState,
   toScreeningChatState,
 } from "./screening-chat-state";
@@ -57,7 +60,7 @@ export function ScreeningChat({
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length]);
+  }, [messages.length, chatState.status]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,8 +79,13 @@ export function ScreeningChat({
     setComposerError(null);
     setIsPending(true);
 
+    let response: AddLeadMessageResponse;
+
     try {
-      await addLeadMessage(leadId, { message: submittedMessage });
+      response = await addLeadMessage(leadId, { message: submittedMessage });
+      setChatState((currentState) =>
+        applyMessageResponse(currentState, response),
+      );
     } catch (error: unknown) {
       setComposerError(getApiErrorMessage(error));
       setIsPending(false);
@@ -88,7 +96,9 @@ export function ScreeningChat({
 
     try {
       const persistedState = await getLeadState(leadId, { cache: "no-store" });
-      setChatState(toScreeningChatState(persistedState));
+      setChatState(
+        toScreeningChatState(persistedState, response.qualification),
+      );
       setIsTranscriptStale(false);
     } catch {
       setIsTranscriptStale(true);
@@ -110,7 +120,9 @@ export function ScreeningChat({
 
     try {
       const persistedState = await getLeadState(leadId, { cache: "no-store" });
-      setChatState(toScreeningChatState(persistedState));
+      setChatState((currentState) =>
+        toScreeningChatState(persistedState, currentState.qualification),
+      );
       setIsTranscriptStale(false);
     } catch (error: unknown) {
       setComposerError(getApiErrorMessage(error));
@@ -187,6 +199,11 @@ export function ScreeningChat({
                   The conversation has not started yet.
                 </div>
               )}
+              <QualificationOutcome
+                leadId={leadId}
+                qualification={chatState.qualification}
+                status={chatState.status}
+              />
               <div ref={transcriptEndRef} />
             </div>
           </div>
@@ -250,13 +267,23 @@ export function ScreeningChat({
                 </div>
               </div>
             </form>
-          ) : (
-            <div className="border-t border-[#cbd1c9] bg-[#eef2ee] px-5 py-5 sm:px-8">
-              <p className="mx-auto max-w-3xl text-sm leading-6 text-[#59665f]">
-                This screening conversation has moved to its next stage.
-              </p>
+          ) : composerError ? (
+            <div className="border-t border-[#cbd1c9] bg-[#fbfcf9] px-4 py-4 sm:px-8">
+              <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 border-l-4 border-[#b34f32] bg-[#fff1ec] px-3 py-2.5 text-sm leading-6 text-[#7d301f] sm:flex-row sm:items-center sm:justify-between">
+                <p role="alert">{composerError}</p>
+                {isTranscriptStale ? (
+                  <button
+                    className="self-start font-semibold text-[#7d301f] underline decoration-2 underline-offset-4 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[#d97a54] disabled:cursor-not-allowed disabled:opacity-60 sm:self-center"
+                    type="button"
+                    disabled={isRefreshing}
+                    onClick={handleRefreshTranscript}
+                  >
+                    {isRefreshing ? "Refreshing" : "Refresh conversation"}
+                  </button>
+                ) : null}
+              </div>
             </div>
-          )}
+          ) : null}
         </section>
       </div>
     </main>
