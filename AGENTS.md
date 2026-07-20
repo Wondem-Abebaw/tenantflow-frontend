@@ -102,6 +102,7 @@ changing an API call. Current endpoints are:
 | Method | Path                                 | Purpose                                                                  |
 | ------ | ------------------------------------ | ------------------------------------------------------------------------ |
 | `GET`  | `/health`                            | Confirm backend and database availability                                |
+| `GET`  | `/properties`                        | List active properties available for a public tenant inquiry             |
 | `POST` | `/leads`                             | Create a public tenant inquiry                                           |
 | `POST` | `/leads/:leadId/messages`            | Add a tenant message and advance screening                               |
 | `GET`  | `/leads/:leadId`                     | Fetch the complete lead, property, qualification, and conversation state |
@@ -150,6 +151,23 @@ interface CreateLeadResponse {
 
 The backend rejects unknown request fields. Send only the documented payload.
 
+### Public Active Properties
+
+`GET /properties` returns the active homes available for public inquiry. It
+intentionally omits organization identifiers and internal qualification rules:
+
+```ts
+interface PublicPropertyResponse {
+  id: string;
+  address: string;
+  unitDetails: string;
+  availableFrom: string;
+  monthlyRent: number;
+  petPolicy: PetPolicy;
+  bedrooms: number;
+}
+```
+
 ### Add Conversation Message
 
 `POST /leads/:leadId/messages`
@@ -160,11 +178,7 @@ interface AddLeadMessageRequest {
 }
 
 type MissingQualificationField =
-  | "income"
-  | "creditScoreEstimate"
-  | "pets"
-  | "moveInDate"
-  | "hasCoSigner";
+  "income" | "creditScoreEstimate" | "pets" | "moveInDate" | "hasCoSigner";
 
 interface AddLeadMessageResponse {
   leadId: string;
@@ -233,11 +247,7 @@ Property values are:
 
 ```ts
 type PetPolicy =
-  | "NO_PETS"
-  | "CATS_ONLY"
-  | "DOGS_ONLY"
-  | "CATS_AND_DOGS"
-  | "CASE_BY_CASE";
+  "NO_PETS" | "CATS_ONLY" | "DOGS_ONLY" | "CATS_AND_DOGS" | "CASE_BY_CASE";
 
 interface PropertyResponse {
   id: string;
@@ -574,9 +584,9 @@ state, or layout shift caused by dynamic content.
 
 ## 16. Open Questions and Assumptions
 
-- The backend currently has no endpoint for listing public active properties.
-  The inquiry flow needs either a backend property-list endpoint or an
-  externally supplied property ID. Do not hardcode seeded IDs in production UI.
+- Public active properties are available through `GET /properties`. Property
+  listing entry points may pass `propertyId` to preselect an active property,
+  and the inquiry flow also lets applicants choose from the API response.
 - The backend currently has no manager authentication or authorization.
 - The backend currently has no manager-wide lead, property, or viewing list
   endpoint for dashboard and calendar screens.

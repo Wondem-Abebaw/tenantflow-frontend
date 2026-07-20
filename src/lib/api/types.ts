@@ -7,19 +7,11 @@ export type LeadStatus =
   | "COMPLETED";
 
 export type PetPolicy =
-  | "NO_PETS"
-  | "CATS_ONLY"
-  | "DOGS_ONLY"
-  | "CATS_AND_DOGS"
-  | "CASE_BY_CASE";
+  "NO_PETS" | "CATS_ONLY" | "DOGS_ONLY" | "CATS_AND_DOGS" | "CASE_BY_CASE";
 
 export type ConversationMessageRole = "USER" | "ASSISTANT" | "SYSTEM";
 
-export type ViewingStatus =
-  | "SCHEDULED"
-  | "COMPLETED"
-  | "CANCELLED"
-  | "NO_SHOW";
+export type ViewingStatus = "SCHEDULED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
 
 export type CalendarErrorCode =
   | "CALENDAR_AUTHORIZATION_FAILED"
@@ -54,11 +46,7 @@ export interface AddLeadMessageRequest {
 }
 
 export type MissingQualificationField =
-  | "income"
-  | "creditScoreEstimate"
-  | "pets"
-  | "moveInDate"
-  | "hasCoSigner";
+  "income" | "creditScoreEstimate" | "pets" | "moveInDate" | "hasCoSigner";
 
 export interface PropertyResponse {
   id: string;
@@ -72,6 +60,16 @@ export interface PropertyResponse {
   petPolicy: PetPolicy;
   bedrooms: number;
   isActive: boolean;
+}
+
+export interface PublicPropertyResponse {
+  id: string;
+  address: string;
+  unitDetails: string;
+  availableFrom: string;
+  monthlyRent: number;
+  petPolicy: PetPolicy;
+  bedrooms: number;
 }
 
 export interface QualificationDecisionResponse {

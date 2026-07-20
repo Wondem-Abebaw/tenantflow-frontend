@@ -12,12 +12,9 @@ interface InquiryPageProps {
   }>;
 }
 
-export default async function InquiryPage({
-  searchParams,
-}: InquiryPageProps) {
+export default async function InquiryPage({ searchParams }: InquiryPageProps) {
   const params = await searchParams;
 
-  // A property picker is blocked until the backend exposes a public active-properties endpoint.
   const propertyId =
     typeof params.propertyId === "string" ? params.propertyId.trim() : "";
 

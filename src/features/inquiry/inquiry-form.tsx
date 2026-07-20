@@ -1,11 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { createLead } from "@/lib/api/leads";
-import type { CreateLeadRequest } from "@/lib/api/types";
+import { getActiveProperties } from "@/lib/api/properties";
+import type {
+  CreateLeadRequest,
+  PublicPropertyResponse,
+} from "@/lib/api/types";
+import { formatDateOnly } from "@/lib/formatting/date";
+import {
+  formatBedrooms,
+  formatMonthlyRent,
+  formatPetPolicy,
+} from "@/lib/formatting/property";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_PATTERN =
@@ -20,6 +30,7 @@ const INQUIRY_FIELDS = [
 
 type InquiryField = (typeof INQUIRY_FIELDS)[number];
 type FieldErrors = Partial<Record<InquiryField, string>>;
+type PropertyLoadState = "loading" | "ready" | "error";
 
 interface InquiryFormProps {
   propertyId: string;
@@ -27,15 +38,87 @@ interface InquiryFormProps {
 
 export function InquiryForm({ propertyId }: InquiryFormProps) {
   const router = useRouter();
+  const linkedPropertyId = UUID_PATTERN.test(propertyId) ? propertyId : "";
+  const [properties, setProperties] = useState<PublicPropertyResponse[]>([]);
+  const [selectedPropertyId, setSelectedPropertyId] =
+    useState(linkedPropertyId);
+  const [propertyLoadState, setPropertyLoadState] =
+    useState<PropertyLoadState>("loading");
+  const [propertyLoadError, setPropertyLoadError] = useState<string | null>(
+    null,
+  );
+  const [propertyLoadAttempt, setPropertyLoadAttempt] = useState(0);
+  const [propertyNotice, setPropertyNotice] = useState<string | null>(
+    propertyId && !linkedPropertyId
+      ? "The linked property is invalid. Choose an available home below."
+      : null,
+  );
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [requestError, setRequestError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
-  const hasValidProperty = UUID_PATTERN.test(propertyId);
-  const propertySelectionMessage = hasValidProperty
-    ? "This inquiry is linked to the home selected on the property listing."
-    : propertyId
-      ? "The property selection link is invalid. Return to the listing and try again."
-      : "No property is attached. Open the inquiry form from a property listing.";
+  const selectedProperty = properties.find(
+    (property) => property.id === selectedPropertyId,
+  );
+  const hasValidProperty =
+    propertyLoadState === "ready" && Boolean(selectedProperty);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void getActiveProperties({
+      signal: controller.signal,
+      cache: "no-store",
+    })
+      .then((response) => {
+        setProperties(response);
+        setPropertyLoadError(null);
+        setPropertyLoadState("ready");
+
+        if (
+          linkedPropertyId &&
+          !response.some((property) => property.id === linkedPropertyId)
+        ) {
+          setSelectedPropertyId("");
+          setPropertyNotice(
+            "The linked property is no longer available. Choose another home.",
+          );
+          replacePropertySearchParam("");
+        }
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+
+        setPropertyLoadError(getApiErrorMessage(error));
+        setPropertyLoadState("error");
+      });
+
+    return () => controller.abort();
+  }, [linkedPropertyId, propertyLoadAttempt]);
+
+  function handlePropertyChange(event: ChangeEvent<HTMLInputElement>) {
+    const nextPropertyId = event.currentTarget.value;
+    setSelectedPropertyId(nextPropertyId);
+    setPropertyNotice(null);
+    setRequestError(null);
+    setFieldErrors((currentErrors) => {
+      if (!currentErrors.propertyId) {
+        return currentErrors;
+      }
+
+      const nextErrors = { ...currentErrors };
+      delete nextErrors.propertyId;
+      return nextErrors;
+    });
+    replacePropertySearchParam(nextPropertyId);
+  }
+
+  function retryPropertyLoad() {
+    setPropertyLoadError(null);
+    setPropertyLoadState("loading");
+    setPropertyLoadAttempt((attempt) => attempt + 1);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -45,7 +128,7 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
     }
 
     const form = event.currentTarget;
-    const request = readRequest(new FormData(form), propertyId);
+    const request = readRequest(new FormData(form), selectedPropertyId);
     const errors = validateRequest(request);
 
     if (Object.keys(errors).length > 0) {
@@ -130,22 +213,20 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
         </div>
 
         <p className="mt-5 max-w-sm text-sm leading-6 text-[#cddbd3] lg:mt-8">
-          Share a few contact details and a short note about the home you
-          selected.
+          Choose an available home, then share your contact details and a short
+          note.
         </p>
       </section>
 
       <section className="flex items-center bg-[#fbfcf9] px-5 py-10 sm:px-8 sm:py-14 lg:min-h-screen lg:px-12 lg:py-16">
         <div className="mx-auto w-full max-w-2xl">
-          <p className="text-sm font-semibold text-[#b34f32]">
-            Rental inquiry
-          </p>
+          <p className="text-sm font-semibold text-[#b34f32]">Rental inquiry</p>
           <h1 className="mt-3 text-3xl font-semibold leading-tight text-[#102e25] sm:text-4xl">
-            Ask about this home
+            Ask about a home
           </h1>
           <p className="mt-4 max-w-xl text-base leading-7 text-[#59665f]">
-            The leasing team will use these details to respond and continue
-            the screening conversation.
+            The leasing team will use these details to respond and continue the
+            screening conversation.
           </p>
 
           <form
@@ -155,29 +236,17 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
             onChange={handleFieldChange}
             onSubmit={handleSubmit}
           >
-            <input type="hidden" name="propertyId" value={propertyId} />
-
-            <div
-              className="flex gap-3 border-y border-[#cbd1c9] py-4"
-              role={hasValidProperty ? undefined : "alert"}
-            >
-              <span
-                aria-hidden="true"
-                className={`mt-1 h-3 w-3 shrink-0 rounded-[2px] ${
-                  hasValidProperty ? "bg-[#2f765e]" : "bg-[#b34f32]"
-                }`}
-              />
-              <div>
-                <p className="text-sm font-semibold text-[#26332e]">
-                  {hasValidProperty
-                    ? "Property selected"
-                    : "Property selection required"}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-[#637069]">
-                  {propertySelectionMessage}
-                </p>
-              </div>
-            </div>
+            <PropertyPicker
+              fieldError={fieldErrors.propertyId}
+              isPending={isPending}
+              loadError={propertyLoadError}
+              loadState={propertyLoadState}
+              notice={propertyNotice}
+              onChange={handlePropertyChange}
+              onRetry={retryPropertyLoad}
+              properties={properties}
+              selectedPropertyId={selectedPropertyId}
+            />
 
             <div className="mt-7 grid gap-x-5 sm:grid-cols-2">
               <div className="sm:col-span-2">
@@ -265,10 +334,7 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
                   aria-invalid={Boolean(fieldErrors.message)}
                   aria-describedby="message-error"
                 />
-                <FieldError
-                  id="message-error"
-                  message={fieldErrors.message}
-                />
+                <FieldError id="message-error" message={fieldErrors.message} />
               </div>
             </div>
 
@@ -309,6 +375,168 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
   );
 }
 
+interface PropertyPickerProps {
+  fieldError?: string;
+  isPending: boolean;
+  loadError: string | null;
+  loadState: PropertyLoadState;
+  notice: string | null;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onRetry: () => void;
+  properties: PublicPropertyResponse[];
+  selectedPropertyId: string;
+}
+
+function PropertyPicker({
+  fieldError,
+  isPending,
+  loadError,
+  loadState,
+  notice,
+  onChange,
+  onRetry,
+  properties,
+  selectedPropertyId,
+}: PropertyPickerProps) {
+  return (
+    <fieldset
+      className="border-y border-[#cbd1c9] py-5"
+      disabled={isPending}
+      aria-describedby="property-picker-status property-error"
+    >
+      <legend className="px-1 text-sm font-semibold text-[#26332e]">
+        Available homes
+      </legend>
+
+      <div className="mt-3 min-h-60" aria-live="polite">
+        {loadState === "loading" ? (
+          <div
+            className="flex min-h-60 items-center justify-center border border-[#d9ddd7] bg-[#f5f7f4] px-5 text-center"
+            role="status"
+          >
+            <span
+              aria-hidden="true"
+              className="mr-3 h-5 w-5 animate-spin rounded-full border-2 border-[#2f765e] border-r-transparent"
+            />
+            <span className="text-sm font-medium text-[#52615a]">
+              Loading available homes
+            </span>
+          </div>
+        ) : null}
+
+        {loadState === "error" ? (
+          <div
+            className="min-h-60 border border-[#d8a896] bg-[#fff3ee] px-5 py-5"
+            role="alert"
+          >
+            <p className="text-sm font-semibold text-[#7d301f]">
+              Available homes could not be loaded
+            </p>
+            <p className="mt-2 text-sm leading-6 break-words text-[#744638]">
+              {loadError ?? "Check your connection and try again."}
+            </p>
+            <button
+              className="mt-5 inline-flex min-h-11 items-center justify-center rounded-[6px] border border-[#7d301f] bg-white px-4 py-2 text-sm font-semibold text-[#7d301f] hover:bg-[#fff8f5] focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-[#d97a54]"
+              type="button"
+              onClick={onRetry}
+            >
+              Try again
+            </button>
+          </div>
+        ) : null}
+
+        {loadState === "ready" && properties.length === 0 ? (
+          <div className="flex min-h-60 items-center border border-[#d9ddd7] bg-[#f5f7f4] px-5 py-6">
+            <div>
+              <p className="text-sm font-semibold text-[#26332e]">
+                No homes are available right now
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[#637069]">
+                New active rentals will appear here when they are listed.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {loadState === "ready" && properties.length > 0 ? (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {properties.map((property) => {
+              const isSelected = property.id === selectedPropertyId;
+              const detailsId = `property-${property.id}-details`;
+
+              return (
+                <li className="min-w-0" key={property.id}>
+                  <label
+                    className={`block h-full cursor-pointer rounded-[8px] border p-4 transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-[#d97a54] ${
+                      isSelected
+                        ? "border-[#2f765e] bg-[#edf7f1]"
+                        : "border-[#cbd1c9] bg-white hover:border-[#78988a]"
+                    } ${isPending ? "cursor-not-allowed opacity-70" : ""}`}
+                  >
+                    <span className="flex min-w-0 items-start gap-3">
+                      <input
+                        className="mt-1 h-5 w-5 shrink-0 accent-[#174c3b]"
+                        type="radio"
+                        name="propertyId"
+                        value={property.id}
+                        checked={isSelected}
+                        onChange={onChange}
+                        aria-describedby={detailsId}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold leading-6 break-words text-[#18372e]">
+                          {property.address}
+                        </span>
+                        <span className="mt-1 block text-sm leading-5 break-words text-[#5b6862]">
+                          {property.unitDetails}
+                        </span>
+                      </span>
+                    </span>
+                    <span
+                      className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-[#d9ddd7] pt-3 text-xs leading-5 text-[#53615b]"
+                      id={detailsId}
+                    >
+                      <span className="font-semibold text-[#26332e]">
+                        {formatMonthlyRent(property.monthlyRent)} / month
+                      </span>
+                      <span>{formatBedrooms(property.bedrooms)}</span>
+                      <span>
+                        Available {formatDateOnly(property.availableFrom)}
+                      </span>
+                      <span>{formatPetPolicy(property.petPolicy)}</span>
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </div>
+
+      <p
+        className="min-h-6 pt-2 text-sm leading-5 break-words text-[#8b3c26]"
+        id="property-picker-status"
+        role={notice ? "alert" : undefined}
+      >
+        {notice ?? null}
+      </p>
+      <FieldError id="property-error" message={fieldError} />
+    </fieldset>
+  );
+}
+
+function replacePropertySearchParam(propertyId: string): void {
+  const url = new URL(window.location.href);
+
+  if (propertyId) {
+    url.searchParams.set("propertyId", propertyId);
+  } else {
+    url.searchParams.delete("propertyId");
+  }
+
+  window.history.replaceState(window.history.state, "", url);
+}
+
 function readRequest(
   formData: FormData,
   propertyId: string,
@@ -344,7 +572,7 @@ function validateRequest(request: CreateLeadRequest): FieldErrors {
   }
 
   if (!UUID_PATTERN.test(request.propertyId)) {
-    errors.propertyId = "Select a property from a valid listing link.";
+    errors.propertyId = "Choose an available property.";
   }
 
   return errors;
@@ -357,6 +585,11 @@ function focusFirstInvalidField(
   const firstInvalidField = INQUIRY_FIELDS.find((field) => errors[field]);
 
   if (!firstInvalidField) {
+    return;
+  }
+
+  if (firstInvalidField === "propertyId") {
+    form.querySelector<HTMLInputElement>('input[name="propertyId"]')?.focus();
     return;
   }
 
