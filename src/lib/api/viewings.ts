@@ -25,6 +25,13 @@ export function getLeadAvailability(
   );
 }
 
+export function getLeadViewing(
+  leadId: string,
+  options: ApiRequestOptions = {},
+): Promise<ViewingResponse> {
+  return requestJson<ViewingResponse>(["leads", leadId, "viewing"], options);
+}
+
 export function scheduleViewing(
   leadId: string,
   request: ScheduleViewingRequest,

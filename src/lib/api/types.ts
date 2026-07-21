@@ -38,7 +38,8 @@ export interface CreateLeadRequest {
 export interface CreateLeadResponse {
   leadId: string;
   conversationId: string;
-  status: "INQUIRY";
+  status: "CHATTING";
+  reply: string;
 }
 
 export interface AddLeadMessageRequest {
@@ -159,7 +160,8 @@ export interface ViewingResponse {
   leadId: string;
   scheduledAt: string;
   endsAt: string;
-  googleCalendarEventId: string;
+  timeZone: string;
+  googleCalendarEventId: string | null;
   calendarEventLink: string | null;
   reminderSent: boolean;
   status: ViewingStatus;

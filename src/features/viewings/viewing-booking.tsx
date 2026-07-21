@@ -24,6 +24,8 @@ interface ViewingBookingProps {
   initialAvailability: AvailabilityResponse | null;
   initialAvailabilityError: string | null;
   initialStatus: LeadStatus;
+  initialViewing: ViewingResponse | null;
+  initialViewingError: string | null;
   property: {
     address: string;
     unitDetails: string;
@@ -35,6 +37,8 @@ export function ViewingBooking({
   initialAvailability,
   initialAvailabilityError,
   initialStatus,
+  initialViewing,
+  initialViewingError,
   property,
 }: ViewingBookingProps) {
   const [leadStatus, setLeadStatus] = useState(initialStatus);
@@ -44,13 +48,13 @@ export function ViewingBooking({
   const [selectedSlot, setSelectedSlot] =
     useState<AvailabilitySlotResponse | null>(null);
   const [confirmedViewing, setConfirmedViewing] =
-    useState<ViewingResponse | null>(null);
+    useState<ViewingResponse | null>(initialViewing);
   const [availabilityError, setAvailabilityError] = useState<string | null>(
     initialAvailabilityError,
   );
   const [schedulingError, setSchedulingError] = useState<string | null>(null);
   const [confirmationNotice, setConfirmationNotice] = useState<string | null>(
-    null,
+    initialViewingError,
   );
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -204,7 +208,9 @@ export function ViewingBooking({
               <ViewingConfirmation
                 notice={confirmationNotice}
                 propertyAddress={property.address}
-                timeZone={availability?.timeZone}
+                timeZone={
+                  confirmedViewing?.timeZone ?? availability?.timeZone
+                }
                 viewing={confirmedViewing}
               />
             ) : leadStatus === "PRE_QUALIFIED" ? (

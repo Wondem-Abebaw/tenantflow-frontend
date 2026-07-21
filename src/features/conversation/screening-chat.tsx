@@ -207,7 +207,7 @@ export function ScreeningChat({
                   className="text-sm font-semibold text-[#26332e]"
                   htmlFor="screening-message"
                 >
-                  Your message
+                  Your answer
                 </label>
                 <textarea
                   className="mt-2 min-h-24 w-full resize-y rounded-[6px] border border-[#aeb8b2] bg-white px-3.5 py-3 text-base leading-6 text-[#18201d] outline-none transition-colors focus:border-[#2f765e] focus:ring-3 focus:ring-[#d9e9df] disabled:cursor-not-allowed disabled:bg-[#eef0ed]"
@@ -215,6 +215,7 @@ export function ScreeningChat({
                   name="message"
                   rows={3}
                   value={draft}
+                  placeholder="Type your answer to the leasing assistant"
                   disabled={composerDisabled}
                   onChange={(event) => {
                     setDraft(event.target.value);

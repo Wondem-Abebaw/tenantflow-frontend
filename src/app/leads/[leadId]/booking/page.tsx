@@ -8,8 +8,9 @@ import type {
   AvailabilityResponse,
   LeadStateResponse,
   LeadStatus,
+  ViewingResponse,
 } from "@/lib/api/types";
-import { getLeadAvailability } from "@/lib/api/viewings";
+import { getLeadAvailability, getLeadViewing } from "@/lib/api/viewings";
 
 export const metadata: Metadata = {
   title: "Book a viewing",
@@ -30,10 +31,10 @@ interface BookingPageProps {
 export default async function BookingPage({ params }: BookingPageProps) {
   const { leadId } = await params;
   const leadState = await loadLeadState(leadId);
-  const initialAvailability = await loadInitialAvailability(
-    leadId,
-    leadState.profile.status,
-  );
+  const [initialAvailability, initialViewing] = await Promise.all([
+    loadInitialAvailability(leadId, leadState.profile.status),
+    loadInitialViewing(leadId, leadState.profile.status),
+  ]);
 
   return (
     <ViewingBooking
@@ -41,6 +42,8 @@ export default async function BookingPage({ params }: BookingPageProps) {
       initialAvailability={initialAvailability.data}
       initialAvailabilityError={initialAvailability.error}
       initialStatus={leadState.profile.status}
+      initialViewing={initialViewing.data}
+      initialViewingError={initialViewing.error}
       property={{
         address: leadState.property.address,
         unitDetails: leadState.property.unitDetails,
@@ -67,6 +70,32 @@ async function loadLeadState(leadId: string): Promise<LeadStateResponse> {
 interface InitialAvailabilityResult {
   data: AvailabilityResponse | null;
   error: string | null;
+}
+
+interface InitialViewingResult {
+  data: ViewingResponse | null;
+  error: string | null;
+}
+
+async function loadInitialViewing(
+  leadId: string,
+  status: LeadStatus,
+): Promise<InitialViewingResult> {
+  if (status !== "SCHEDULED" && status !== "COMPLETED") {
+    return { data: null, error: null };
+  }
+
+  try {
+    return {
+      data: await getLeadViewing(leadId, { cache: "no-store" }),
+      error: null,
+    };
+  } catch (error: unknown) {
+    return {
+      data: null,
+      error: getApiErrorMessage(error),
+    };
+  }
 }
 
 async function loadInitialAvailability(

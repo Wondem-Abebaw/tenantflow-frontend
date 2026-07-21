@@ -107,6 +107,7 @@ changing an API call. Current endpoints are:
 | `POST` | `/leads/:leadId/messages`            | Add a tenant message and advance screening                               |
 | `GET`  | `/leads/:leadId`                     | Fetch the complete lead, property, qualification, and conversation state |
 | `GET`  | `/leads/:leadId/availability?days=N` | Fetch viewing slots for a `PRE_QUALIFIED` lead                           |
+| `GET`  | `/leads/:leadId/viewing`             | Fetch the persisted scheduled viewing for confirmation                   |
 | `POST` | `/leads/:leadId/schedule`            | Schedule one exact returned slot                                         |
 
 The backend also exposes `POST /cron/send-reminders`, but that endpoint is for
@@ -145,11 +146,12 @@ interface CreateLeadRequest {
 interface CreateLeadResponse {
   leadId: string;
   conversationId: string;
-  status: "INQUIRY";
+  status: "CHATTING";
+  reply: string;
 }
 ```
 
-The backend rejects unknown request fields. Send only the documented payload.
+The backend rejects unknown request fields. Send only the documented payload. Inquiry creation persists the applicant message and the first backend-authored screening question, then moves the lead to `CHATTING`; the frontend must render that persisted assistant question rather than inventing qualification questions.
 
 ### Public Active Properties
 
@@ -283,6 +285,10 @@ interface AvailabilityResponse {
 
 This endpoint returns `403` unless the lead is `PRE_QUALIFIED`.
 
+### Scheduled Viewing
+
+`GET /leads/:leadId/viewing` returns the persisted `ViewingResponse` for a lead that has already booked. Use it to restore the exact confirmation after refresh; do not rely only on client state.
+
 ### Schedule Viewing
 
 `POST /leads/:leadId/schedule`
@@ -299,7 +305,8 @@ interface ViewingResponse {
   leadId: string;
   scheduledAt: string;
   endsAt: string;
-  googleCalendarEventId: string;
+  timeZone: string;
+  googleCalendarEventId: string | null;
   calendarEventLink: string | null;
   reminderSent: boolean;
   status: "SCHEDULED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
@@ -396,7 +403,8 @@ and update them whenever the backend contract changes.
 - Validate fields for immediate feedback, but treat backend validation as
   authoritative.
 - After inquiry creation, navigate to a stable route containing the returned
-  `leadId`.
+  `leadId`. The initial transcript already contains the backend-authored first
+  screening question and the lead is `CHATTING`.
 - Treat an unauthenticated `leadId` as sensitive access data. Do not send it to
   analytics, place it in public metadata, or log it unnecessarily.
 - Render the persisted transcript from `GET /leads/:leadId`, not only messages
@@ -432,6 +440,8 @@ and update them whenever the backend contract changes.
 - On success, show the confirmed date, time, property address, and calendar
   link when present.
 - Once the lead becomes `SCHEDULED`, prevent additional booking attempts.
+- Fetch `/leads/:leadId/viewing` for a scheduled lead so the confirmation date,
+  interval, timezone, and calendar link survive page refreshes.
 
 ### Manager Workspace
 

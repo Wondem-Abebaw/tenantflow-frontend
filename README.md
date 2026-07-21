@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TenantFlow AI Frontend
 
-## Getting Started
+Next.js tenant experience for the TenantFlow AI leasing workflow:
 
-First, run the development server:
+`Inquiry -> Conversational Screening -> Rule-Based Qualification -> Viewing Booking -> Reminders`
+
+The NestJS backend is the source of truth for lead status, qualification decisions, property alternatives, Calendar availability, scheduling, and reminders.
+
+## Setup
+
+Install dependencies and create the public environment file:
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+Set the separately running backend origin:
+
+```dotenv
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+```
+
+Start the frontend:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`. The first screen is the public property inquiry flow.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Lifecycle
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. `POST /leads` stores the inquiry, appends the first backend-authored qualification question, and returns a `CHATTING` lead.
+2. The tenant answers in the persisted conversation. `POST /leads/:leadId/messages` extracts income, estimated credit score, pets, desired move-in date, and co-signer status.
+3. When no qualification fields are missing, the backend applies the selected property rules and returns `PRE_QUALIFIED` or `REJECTED`. The frontend does not calculate eligibility.
+4. A `PRE_QUALIFIED` tenant can fetch Calendar availability and submit one exact returned interval.
+5. After scheduling, `GET /leads/:leadId/viewing` restores the persisted date, interval, timezone, and Calendar link after refresh.
 
-## Learn More
+The manager-wide pipeline and calendar workspace remain deferred until authenticated manager list APIs are available. This frontend does not use fixtures or direct database access for that production path.
 
-To learn more about Next.js, take a look at the following resources:
+## Verification
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See `AGENTS.md` for the complete frontend architecture and API contract.
