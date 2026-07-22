@@ -1,18 +1,24 @@
 "use client";
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { LeadStatusBadge } from "@/components/ui/lead-status-badge";
 import { ApiError, getApiErrorMessage } from "@/lib/api/errors";
-import { getLeadState } from "@/lib/api/leads";
+import {
+  apiQueryKeys,
+  leadAvailabilityQueryOptions,
+  leadStateQueryOptions,
+  leadViewingQueryOptions,
+} from "@/lib/api/query-options";
 import type {
   AvailabilityResponse,
   AvailabilitySlotResponse,
   LeadStatus,
   ViewingResponse,
 } from "@/lib/api/types";
-import { getLeadAvailability, scheduleViewing } from "@/lib/api/viewings";
+import { scheduleViewing } from "@/lib/api/viewings";
 import { formatLeadStatus } from "@/lib/formatting/lead-status";
 import {
   formatViewingDateTime,
@@ -21,106 +27,61 @@ import {
 
 interface ViewingBookingProps {
   leadId: string;
-  initialAvailability: AvailabilityResponse | null;
-  initialAvailabilityError: string | null;
-  initialStatus: LeadStatus;
-  initialViewing: ViewingResponse | null;
-  initialViewingError: string | null;
-  property: {
-    address: string;
-    unitDetails: string;
-  };
 }
 
-export function ViewingBooking({
-  leadId,
-  initialAvailability,
-  initialAvailabilityError,
-  initialStatus,
-  initialViewing,
-  initialViewingError,
-  property,
-}: ViewingBookingProps) {
-  const [leadStatus, setLeadStatus] = useState(initialStatus);
-  const [availability, setAvailability] = useState<AvailabilityResponse | null>(
-    initialAvailability,
-  );
-  const [selectedSlot, setSelectedSlot] =
+export function ViewingBooking({ leadId }: ViewingBookingProps) {
+  const queryClient = useQueryClient();
+  const leadQuery = useQuery(leadStateQueryOptions(leadId));
+  const leadStatus = leadQuery.data?.profile.status ?? "INQUIRY";
+  const availabilityQuery = useQuery({
+    ...leadAvailabilityQueryOptions(leadId),
+    enabled: leadStatus === "PRE_QUALIFIED",
+    retry: false,
+  });
+  const viewingQuery = useQuery({
+    ...leadViewingQueryOptions(leadId),
+    enabled: leadStatus === "SCHEDULED" || leadStatus === "COMPLETED",
+    retry: false,
+  });
+  const scheduleMutation = useMutation({
+    mutationFn: (slot: AvailabilitySlotResponse) =>
+      scheduleViewing(leadId, { start: slot.start, end: slot.end }),
+  });
+  const [storedSelectedSlot, setSelectedSlot] =
     useState<AvailabilitySlotResponse | null>(null);
-  const [confirmedViewing, setConfirmedViewing] =
-    useState<ViewingResponse | null>(initialViewing);
-  const [availabilityError, setAvailabilityError] = useState<string | null>(
-    initialAvailabilityError,
-  );
-  const [schedulingError, setSchedulingError] = useState<string | null>(null);
   const [confirmationNotice, setConfirmationNotice] = useState<string | null>(
-    initialViewingError,
+    null,
   );
-  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
-  const [isScheduling, setIsScheduling] = useState(false);
+  const property = leadQuery.data?.property ?? null;
+  const availability = availabilityQuery.data ?? null;
+  const selectedSlot =
+    storedSelectedSlot &&
+    availability?.slots.some((slot) => slotsMatch(slot, storedSelectedSlot))
+      ? storedSelectedSlot
+      : null;
+  const confirmedViewing = viewingQuery.data ?? null;
+  const availabilityError = availabilityQuery.error
+    ? getApiErrorMessage(availabilityQuery.error)
+    : null;
+  const schedulingError = scheduleMutation.error
+    ? getApiErrorMessage(scheduleMutation.error)
+    : null;
+  const viewingNotice =
+    confirmationNotice ??
+    (viewingQuery.error ? getApiErrorMessage(viewingQuery.error) : null);
+  const isLoadingAvailability = availabilityQuery.isFetching;
+  const isScheduling = scheduleMutation.isPending;
   const bookingComplete =
-    leadStatus === "SCHEDULED" || confirmedViewing !== null;
+    leadStatus === "SCHEDULED" ||
+    leadStatus === "COMPLETED" ||
+    confirmedViewing !== null;
+  const refetchLead = leadQuery.refetch;
 
-  async function loadAvailability(signal?: AbortSignal) {
-    try {
-      const response = await getLeadAvailability(leadId, undefined, {
-        signal,
-        cache: "no-store",
-      });
-
-      if (signal?.aborted) {
-        return;
-      }
-
-      setAvailability(response);
-      setSelectedSlot((currentSlot) =>
-        currentSlot &&
-        response.slots.some((slot) => slotsMatch(slot, currentSlot))
-          ? currentSlot
-          : null,
-      );
-    } catch (error: unknown) {
-      if (isAbortError(error) || signal?.aborted) {
-        return;
-      }
-
-      if (isForbiddenApiError(error)) {
-        try {
-          const leadState = await getLeadState(leadId, {
-            signal,
-            cache: "no-store",
-          });
-
-          if (signal?.aborted) {
-            return;
-          }
-
-          setLeadStatus(leadState.profile.status);
-
-          if (leadState.profile.status === "SCHEDULED") {
-            setAvailability(null);
-            return;
-          }
-        } catch (statusError: unknown) {
-          if (isAbortError(statusError) || signal?.aborted) {
-            return;
-          }
-        }
-      }
-
-      setAvailabilityError(getApiErrorMessage(error));
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoadingAvailability(false);
-      }
+  useEffect(() => {
+    if (isForbiddenApiError(availabilityQuery.error)) {
+      void refetchLead();
     }
-  }
-
-  async function refreshAvailability() {
-    setAvailabilityError(null);
-    setIsLoadingAvailability(true);
-    await loadAvailability();
-  }
+  }, [availabilityQuery.error, refetchLead]);
 
   const slotGroups = useMemo(() => {
     if (!availability) {
@@ -130,47 +91,67 @@ export function ViewingBooking({
     return groupViewingSlots(availability.slots, availability.timeZone);
   }, [availability]);
 
+  async function refreshAvailability() {
+    await availabilityQuery.refetch();
+  }
+
   async function handleSchedule() {
     if (
       !selectedSlot ||
-      isScheduling ||
+      scheduleMutation.isPending ||
       bookingComplete ||
       leadStatus !== "PRE_QUALIFIED"
     ) {
       return;
     }
 
-    setSchedulingError(null);
     setConfirmationNotice(null);
-    setIsScheduling(true);
+    scheduleMutation.reset();
 
     try {
-      const viewing = await scheduleViewing(leadId, {
-        start: selectedSlot.start,
-        end: selectedSlot.end,
-      });
-
-      setConfirmedViewing(viewing);
+      const viewing = await scheduleMutation.mutateAsync(selectedSlot);
+      queryClient.setQueryData(apiQueryKeys.leadViewing(leadId), viewing);
       setSelectedSlot(null);
 
-      try {
-        const leadState = await getLeadState(leadId, { cache: "no-store" });
-        setLeadStatus(leadState.profile.status);
-      } catch {
+      const refreshResult = await leadQuery.refetch();
+
+      if (refreshResult.isError) {
         setConfirmationNotice(
           "Your viewing is confirmed, but the latest screening status could not refresh.",
         );
       }
     } catch (error: unknown) {
-      setSchedulingError(getApiErrorMessage(error));
-
       if (isSlotUnavailableError(error)) {
         setSelectedSlot(null);
         await refreshAvailability();
       }
-    } finally {
-      setIsScheduling(false);
     }
+  }
+
+  if (!property) {
+    return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-[#f4f5f1] px-5 text-[#18201d]">
+        <div className="w-full max-w-lg border-l-4 border-[#b34f32] bg-[#fff1ec] px-5 py-5">
+          <p className="text-sm leading-6 text-[#7d301f]" role="alert">
+            {leadQuery.error
+              ? getApiErrorMessage(leadQuery.error)
+              : "Loading viewing details."}
+          </p>
+          {leadQuery.isError ? (
+            <button
+              className="mt-3 min-h-10 text-sm font-semibold text-[#7d301f] underline decoration-2 underline-offset-4"
+              type="button"
+              disabled={leadQuery.isFetching}
+              onClick={() => {
+                void leadQuery.refetch();
+              }}
+            >
+              {leadQuery.isFetching ? "Refreshing" : "Try again"}
+            </button>
+          ) : null}
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -206,11 +187,9 @@ export function ViewingBooking({
           <div className="mx-auto w-full max-w-3xl">
             {bookingComplete ? (
               <ViewingConfirmation
-                notice={confirmationNotice}
+                notice={viewingNotice}
                 propertyAddress={property.address}
-                timeZone={
-                  confirmedViewing?.timeZone ?? availability?.timeZone
-                }
+                timeZone={confirmedViewing?.timeZone ?? availability?.timeZone}
                 viewing={confirmedViewing}
               />
             ) : leadStatus === "PRE_QUALIFIED" ? (
@@ -230,7 +209,7 @@ export function ViewingBooking({
                 }}
                 onSelectSlot={(slot) => {
                   setSelectedSlot(slot);
-                  setSchedulingError(null);
+                  scheduleMutation.reset();
                 }}
               />
             ) : (
@@ -607,10 +586,6 @@ function isSlotUnavailableError(error: unknown): boolean {
 
 function isForbiddenApiError(error: unknown): boolean {
   return error instanceof ApiError && error.details.statusCode === 403;
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
 }
 
 function getSafeCalendarLink(value: string | null | undefined): string | null {

@@ -1,11 +1,12 @@
 "use client";
 
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { createLead } from "@/lib/api/leads";
-import { getActiveProperties } from "@/lib/api/properties";
+import { activePropertiesQueryOptions } from "@/lib/api/query-options";
 import type {
   CreateLeadRequest,
   PublicPropertyResponse,
@@ -39,69 +40,65 @@ interface InquiryFormProps {
 export function InquiryForm({ propertyId }: InquiryFormProps) {
   const router = useRouter();
   const linkedPropertyId = UUID_PATTERN.test(propertyId) ? propertyId : "";
-  const [properties, setProperties] = useState<PublicPropertyResponse[]>([]);
+  const propertiesQuery = useQuery(activePropertiesQueryOptions());
+  const createLeadMutation = useMutation({
+    mutationFn: (request: CreateLeadRequest) => createLead(request),
+    onSuccess: (response) => {
+      router.push(`/leads/${encodeURIComponent(response.leadId)}`);
+    },
+  });
+  const properties = propertiesQuery.data ?? [];
   const [selectedPropertyId, setSelectedPropertyId] =
     useState(linkedPropertyId);
-  const [propertyLoadState, setPropertyLoadState] =
-    useState<PropertyLoadState>("loading");
-  const [propertyLoadError, setPropertyLoadError] = useState<string | null>(
-    null,
-  );
-  const [propertyLoadAttempt, setPropertyLoadAttempt] = useState(0);
   const [propertyNotice, setPropertyNotice] = useState<string | null>(
     propertyId && !linkedPropertyId
       ? "The linked property is invalid. Choose an available home below."
       : null,
   );
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [requestError, setRequestError] = useState<string | null>(null);
-  const [isPending, setIsPending] = useState(false);
+  const linkedPropertyUnavailable = Boolean(
+    linkedPropertyId &&
+    propertiesQuery.data &&
+    !propertiesQuery.data.some((property) => property.id === linkedPropertyId),
+  );
+  const selectedPropertyIdForRequest =
+    linkedPropertyUnavailable && selectedPropertyId === linkedPropertyId
+      ? ""
+      : selectedPropertyId;
+  const displayedPropertyNotice =
+    linkedPropertyUnavailable && selectedPropertyId === linkedPropertyId
+      ? "The linked property is no longer available. Choose another home."
+      : propertyNotice;
+  const propertyLoadState: PropertyLoadState =
+    propertiesQuery.data === undefined && propertiesQuery.isFetching
+      ? "loading"
+      : propertiesQuery.data === undefined && propertiesQuery.isError
+        ? "error"
+        : "ready";
+  const propertyLoadError = propertiesQuery.error
+    ? getApiErrorMessage(propertiesQuery.error)
+    : null;
+  const requestError = createLeadMutation.error
+    ? getApiErrorMessage(createLeadMutation.error)
+    : null;
+  const isPending = createLeadMutation.isPending;
   const selectedProperty = properties.find(
-    (property) => property.id === selectedPropertyId,
+    (property) => property.id === selectedPropertyIdForRequest,
   );
   const hasValidProperty =
     propertyLoadState === "ready" && Boolean(selectedProperty);
 
   useEffect(() => {
-    const controller = new AbortController();
-
-    void getActiveProperties({
-      signal: controller.signal,
-      cache: "no-store",
-    })
-      .then((response) => {
-        setProperties(response);
-        setPropertyLoadError(null);
-        setPropertyLoadState("ready");
-
-        if (
-          linkedPropertyId &&
-          !response.some((property) => property.id === linkedPropertyId)
-        ) {
-          setSelectedPropertyId("");
-          setPropertyNotice(
-            "The linked property is no longer available. Choose another home.",
-          );
-          replacePropertySearchParam("");
-        }
-      })
-      .catch((error: unknown) => {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-
-        setPropertyLoadError(getApiErrorMessage(error));
-        setPropertyLoadState("error");
-      });
-
-    return () => controller.abort();
-  }, [linkedPropertyId, propertyLoadAttempt]);
+    if (linkedPropertyUnavailable && selectedPropertyId === linkedPropertyId) {
+      replacePropertySearchParam("");
+    }
+  }, [linkedPropertyId, linkedPropertyUnavailable, selectedPropertyId]);
 
   function handlePropertyChange(event: ChangeEvent<HTMLInputElement>) {
     const nextPropertyId = event.currentTarget.value;
     setSelectedPropertyId(nextPropertyId);
     setPropertyNotice(null);
-    setRequestError(null);
+    createLeadMutation.reset();
     setFieldErrors((currentErrors) => {
       if (!currentErrors.propertyId) {
         return currentErrors;
@@ -115,12 +112,10 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
   }
 
   function retryPropertyLoad() {
-    setPropertyLoadError(null);
-    setPropertyLoadState("loading");
-    setPropertyLoadAttempt((attempt) => attempt + 1);
+    void propertiesQuery.refetch();
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (isPending) {
@@ -128,7 +123,10 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
     }
 
     const form = event.currentTarget;
-    const request = readRequest(new FormData(form), selectedPropertyId);
+    const request = readRequest(
+      new FormData(form),
+      selectedPropertyIdForRequest,
+    );
     const errors = validateRequest(request);
 
     if (Object.keys(errors).length > 0) {
@@ -138,16 +136,8 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
     }
 
     setFieldErrors({});
-    setRequestError(null);
-    setIsPending(true);
-
-    try {
-      const response = await createLead(request);
-      router.push(`/leads/${encodeURIComponent(response.leadId)}`);
-    } catch (error: unknown) {
-      setRequestError(getApiErrorMessage(error));
-      setIsPending(false);
-    }
+    createLeadMutation.reset();
+    createLeadMutation.mutate(request);
   }
 
   function handleFieldChange(event: FormEvent<HTMLFormElement>) {
@@ -166,7 +156,7 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
       return;
     }
 
-    setRequestError(null);
+    createLeadMutation.reset();
     setFieldErrors((currentErrors) => {
       if (!currentErrors[fieldName]) {
         return currentErrors;
@@ -241,11 +231,11 @@ export function InquiryForm({ propertyId }: InquiryFormProps) {
               isPending={isPending}
               loadError={propertyLoadError}
               loadState={propertyLoadState}
-              notice={propertyNotice}
+              notice={displayedPropertyNotice}
               onChange={handlePropertyChange}
               onRetry={retryPropertyLoad}
               properties={properties}
-              selectedPropertyId={selectedPropertyId}
+              selectedPropertyId={selectedPropertyIdForRequest}
             />
 
             <div className="mt-7 grid gap-x-5 sm:grid-cols-2">

@@ -1,11 +1,14 @@
+import {
+  dehydrate,
+  HydrationBoundary,
+  QueryClient,
+} from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { ScreeningChat } from "@/features/conversation/screening-chat";
-import { toScreeningChatState } from "@/features/conversation/screening-chat-state";
 import { ApiError } from "@/lib/api/errors";
-import { getLeadState } from "@/lib/api/leads";
-import type { LeadStateResponse } from "@/lib/api/types";
+import { leadStateQueryOptions } from "@/lib/api/query-options";
 
 export const metadata: Metadata = {
   title: "Screening conversation",
@@ -25,19 +28,22 @@ interface LeadPageProps {
 
 export default async function LeadPage({ params }: LeadPageProps) {
   const { leadId } = await params;
-  const leadState = await loadLeadState(leadId);
+  const queryClient = new QueryClient();
+  await loadLeadState(queryClient, leadId);
 
   return (
-    <ScreeningChat
-      leadId={leadId}
-      initialState={toScreeningChatState(leadState)}
-    />
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <ScreeningChat leadId={leadId} />
+    </HydrationBoundary>
   );
 }
 
-async function loadLeadState(leadId: string): Promise<LeadStateResponse> {
+async function loadLeadState(
+  queryClient: QueryClient,
+  leadId: string,
+): Promise<void> {
   try {
-    return await getLeadState(leadId, { cache: "no-store" });
+    await queryClient.fetchQuery(leadStateQueryOptions(leadId));
   } catch (error: unknown) {
     if (
       error instanceof ApiError &&

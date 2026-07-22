@@ -1,5 +1,6 @@
 "use client";
 
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   type FormEvent,
   type ReactNode,
@@ -10,7 +11,8 @@ import {
 
 import { LeadStatusBadge } from "@/components/ui/lead-status-badge";
 import { getApiErrorMessage } from "@/lib/api/errors";
-import { addLeadMessage, getLeadState } from "@/lib/api/leads";
+import { addLeadMessage } from "@/lib/api/leads";
+import { leadStateQueryOptions } from "@/lib/api/query-options";
 import type {
   AddLeadMessageResponse,
   ConversationMessageResponse,
@@ -21,38 +23,47 @@ import { formatConversationTimestamp } from "@/lib/formatting/conversation-times
 import { QualificationOutcome } from "../qualification/qualification-outcome";
 import {
   applyMessageResponse,
-  type ScreeningChatState,
+  type ScreeningQualificationOutcome,
   toScreeningChatState,
 } from "./screening-chat-state";
 
-
 interface ScreeningChatProps {
   leadId: string;
-  initialState: ScreeningChatState;
 }
 
-export function ScreeningChat({
-  leadId,
-  initialState,
-}: ScreeningChatProps) {
-  const [chatState, setChatState] = useState(initialState);
+export function ScreeningChat({ leadId }: ScreeningChatProps) {
+  const leadQuery = useQuery(leadStateQueryOptions(leadId));
+  const messageMutation = useMutation({
+    mutationFn: (message: string) => addLeadMessage(leadId, { message }),
+  });
   const [draft, setDraft] = useState("");
   const [composerError, setComposerError] = useState<string | null>(null);
-  const [isPending, setIsPending] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [messageQualification, setMessageQualification] =
+    useState<ScreeningQualificationOutcome | null>(null);
+  const [pendingResponse, setPendingResponse] =
+    useState<AddLeadMessageResponse | null>(null);
   const [isTranscriptStale, setIsTranscriptStale] = useState(false);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
-  const messages = chatState.messages;
-  const canContinueScreening = isChatStatus(chatState.status);
+  const persistedChatState = leadQuery.data
+    ? toScreeningChatState(leadQuery.data, messageQualification)
+    : null;
+  const chatState =
+    persistedChatState && pendingResponse
+      ? applyMessageResponse(persistedChatState, pendingResponse)
+      : persistedChatState;
+  const messages = chatState?.messages ?? [];
+  const canContinueScreening = chatState
+    ? isChatStatus(chatState.status)
+    : false;
+  const isRefreshing = leadQuery.isFetching;
+  const isPending =
+    messageMutation.isPending || (isRefreshing && pendingResponse !== null);
   const composerDisabled =
-    isPending ||
-    isRefreshing ||
-    isTranscriptStale ||
-    !canContinueScreening;
+    isPending || isRefreshing || isTranscriptStale || !canContinueScreening;
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, chatState.status]);
+  }, [messages.length, chatState?.status]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,37 +80,33 @@ export function ScreeningChat({
     }
 
     setComposerError(null);
-    setIsPending(true);
+    messageMutation.reset();
 
     let response: AddLeadMessageResponse;
 
     try {
-      response = await addLeadMessage(leadId, { message: submittedMessage });
-      setChatState((currentState) =>
-        applyMessageResponse(currentState, response),
-      );
+      response = await messageMutation.mutateAsync(submittedMessage);
+      setPendingResponse(response);
+      setMessageQualification(response.qualification);
     } catch (error: unknown) {
       setComposerError(getApiErrorMessage(error));
-      setIsPending(false);
       return;
     }
 
     setDraft("");
 
-    try {
-      const persistedState = await getLeadState(leadId, { cache: "no-store" });
-      setChatState(
-        toScreeningChatState(persistedState, response.qualification),
-      );
-      setIsTranscriptStale(false);
-    } catch {
+    const refreshResult = await leadQuery.refetch();
+
+    if (refreshResult.isError) {
       setIsTranscriptStale(true);
       setComposerError(
         "Your message was sent, but the conversation could not refresh.",
       );
-    } finally {
-      setIsPending(false);
+      return;
     }
+
+    setPendingResponse(null);
+    setIsTranscriptStale(false);
   }
 
   async function handleRefreshTranscript() {
@@ -108,19 +115,41 @@ export function ScreeningChat({
     }
 
     setComposerError(null);
-    setIsRefreshing(true);
+    const refreshResult = await leadQuery.refetch();
 
-    try {
-      const persistedState = await getLeadState(leadId, { cache: "no-store" });
-      setChatState((currentState) =>
-        toScreeningChatState(persistedState, currentState.qualification),
-      );
-      setIsTranscriptStale(false);
-    } catch (error: unknown) {
-      setComposerError(getApiErrorMessage(error));
-    } finally {
-      setIsRefreshing(false);
+    if (refreshResult.isError) {
+      setComposerError(getApiErrorMessage(refreshResult.error));
+      return;
     }
+
+    setPendingResponse(null);
+    setIsTranscriptStale(false);
+  }
+
+  if (!chatState) {
+    return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-[#f4f5f1] px-5 text-[#18201d]">
+        <div className="w-full max-w-lg border-l-4 border-[#b34f32] bg-[#fff1ec] px-5 py-5">
+          <p className="text-sm leading-6 text-[#7d301f]" role="alert">
+            {leadQuery.error
+              ? getApiErrorMessage(leadQuery.error)
+              : "Loading the screening conversation."}
+          </p>
+          {leadQuery.isError ? (
+            <button
+              className="mt-3 min-h-10 text-sm font-semibold text-[#7d301f] underline decoration-2 underline-offset-4"
+              type="button"
+              disabled={leadQuery.isFetching}
+              onClick={() => {
+                void leadQuery.refetch();
+              }}
+            >
+              {leadQuery.isFetching ? "Refreshing" : "Try again"}
+            </button>
+          ) : null}
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -129,9 +158,7 @@ export function ScreeningChat({
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-[#174c3b]">TenantFlow</p>
-            <p className="truncate text-xs text-[#68756f]">
-              Rental screening
-            </p>
+            <p className="truncate text-xs text-[#68756f]">Rental screening</p>
           </div>
           <LeadStatusBadge status={chatState.status} />
         </div>
@@ -139,9 +166,7 @@ export function ScreeningChat({
 
       <div className="mx-auto grid w-full max-w-7xl lg:grid-cols-[19rem_minmax(0,1fr)]">
         <aside className="border-b border-[#cbd1c9] bg-[#16382f] px-5 py-6 text-white sm:px-8 lg:min-h-[calc(100dvh-69px)] lg:border-r lg:border-b-0 lg:px-7 lg:py-8">
-          <p className="text-xs font-semibold text-[#f4c9b8]">
-            Selected home
-          </p>
+          <p className="text-xs font-semibold text-[#f4c9b8]">Selected home</p>
           <h1 className="mt-3 text-xl font-semibold leading-7 break-words">
             {chatState.property.address}
           </h1>
